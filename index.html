@@ -116,7 +116,7 @@
   .rc-notes b{ color:#333; }
   .rc-notes .txt{ white-space:pre-wrap; }
 
-  .rc-sign{ display:grid; grid-template-columns:repeat(3,1fr); gap:10px; font-size:11px; text-align:center; margin-top:26px; }
+  .rc-sign{ display:grid; grid-template-columns:repeat(3,1fr); gap:10px; font-size:11px; text-align:center; margin-top:48px; }
   .rc-sign .box{ border-top:1px solid #333; padding-top:4px; }
   .rc-sign .who{ color:#555; margin-top:2px; }
 
@@ -164,7 +164,7 @@
     table.rc-table{ font-size:11.5px; }
     table.rc-table th, table.rc-table td{ padding:5px 6px; height:20px; }
     .rc-notes{ font-size:11.5px; margin:10px 0 12px; }
-    .rc-sign{ margin-top:24px; font-size:11px; }
+    .rc-sign{ margin-top:40px; font-size:11px; }
     @page{ size:A4; margin:10mm; }
   }
 </style>
@@ -194,6 +194,7 @@
       <div class="field"><label>เลขที่ใบรับเงิน</label><input id="r_no" style="color:#194e8c;font-weight:700;"></div>
       <div class="field"><label>วันที่</label><input id="r_date" type="date"></div>
     </div>
+    <div class="field"><label>ชื่อพนักงานที่คีย์ใบรับเงิน</label><input id="r_staff" placeholder="เช่น สมหญิง"></div>
 
     <h2 style="margin-top:18px;">ข้อมูลลูกค้า / รถ</h2>
     <div class="field"><label>ชื่อลูกค้า</label><input id="cu_name"></div>
@@ -218,17 +219,20 @@
       <button class="btn" onclick="saveAndPrint()">บันทึก &amp; พิมพ์ / PDF</button>
     </div>
 
-    <h2 style="margin-top:18px;">เชื่อมต่อ Google Sheets <small>(ฐานข้อมูลหลัก — ต้องตั้งค่า)</small></h2>
-    <div style="font-size:11.5px;color:#7a8a99;margin-bottom:8px;">
-      หน้านี้เป็นเว็บเพจธรรมดา ไม่มีระบบเก็บข้อมูลกลางในตัวเอง — <b>ต้องตั้งค่า Google Sheets ที่นี่</b> เพื่อให้ประวัติใบรับเงินและเลขที่วิ่งถูกต้องและใช้ร่วมกันได้ทุกเครื่อง/ทุกคน
-      ถ้าไม่ตั้งค่า ข้อมูลจะเก็บไว้ในเบราว์เซอร์เครื่องนี้เครื่องเดียวเท่านั้น (localStorage) และเลขที่/ประวัติจะไม่ตรงกันระหว่างเครื่อง
-      <b>คำเตือน:</b> URL นี้ฝังอยู่ในไฟล์ HTML — อย่าส่งไฟล์นี้ให้คนนอกองค์กร
-    </div>
-    <div class="field"><label>Google Apps Script Web App URL</label><input id="gs_url" placeholder="https://script.google.com/macros/s/xxxx/exec"></div>
-    <div id="gs_status" style="font-size:11.5px;color:#7a8a99;margin-bottom:8px;">ยังไม่ได้เชื่อมต่อ</div>
-    <div class="actions" style="margin-top:0;">
-      <button class="btn ghost" onclick="testSheetConnection()">ทดสอบการเชื่อมต่อ</button>
-      <button class="btn ghost" onclick="pushAllToSheet()">ส่งประวัติในเครื่องนี้ขึ้น Sheet</button>
+    <button type="button" class="btn ghost" style="width:100%;margin-top:10px;" onclick="toggleAdvancedSettings()">⚙ ตั้งค่าขั้นสูง</button>
+
+    <div id="advancedSettings" style="display:none;">
+      <h2 style="margin-top:18px;">เชื่อมต่อ Google Sheets <small>(ฐานข้อมูลหลัก)</small></h2>
+      <div style="font-size:11.5px;color:#7a8a99;margin-bottom:8px;">
+        หน้านี้เป็นเว็บเพจธรรมดา ไม่มีระบบเก็บข้อมูลกลางในตัวเอง — ต้องเชื่อมกับ Google Sheets เพื่อให้ประวัติใบรับเงินและเลขที่วิ่งถูกต้องและใช้ร่วมกันได้ทุกเครื่อง/ทุกคน (ตั้งค่ามาให้แล้ว ปกติไม่ต้องแก้อะไรตรงนี้)
+        <b>คำเตือน:</b> URL นี้ฝังอยู่ในไฟล์ — อย่าส่งไฟล์นี้ให้คนนอกองค์กร
+      </div>
+      <div class="field"><label>Google Apps Script Web App URL</label><input id="gs_url" placeholder="https://script.google.com/macros/s/xxxx/exec" value="https://script.google.com/macros/s/AKfycbzVxtV7l4MgDdGshOUuWwuR-XZGtH-TSmI1_BiqDDZQ7yI_UHlxtRon02s5B0zIQbCcdA/exec"></div>
+      <div id="gs_status" style="font-size:11.5px;color:#7a8a99;margin-bottom:8px;">ยังไม่ได้เชื่อมต่อ</div>
+      <div class="actions" style="margin-top:0;">
+        <button class="btn ghost" onclick="testSheetConnection()">ทดสอบการเชื่อมต่อ</button>
+        <button class="btn ghost" onclick="pushAllToSheet()">ส่งประวัติในเครื่องนี้ขึ้น Sheet</button>
+      </div>
     </div>
   </div>
 
@@ -437,7 +441,7 @@ function receiptBlockHTML(titleTh){
 
     <div class="rc-sign">
       <div><div class="box">ลูกค้า/ผู้จ่ายเงิน</div><div class="who f_signcust"></div></div>
-      <div><div class="box">ผู้รับเงิน</div><div class="who"></div></div>
+      <div><div class="box">ผู้รับเงิน</div><div class="who f_signstaff"></div></div>
       <div><div class="box">ผู้มีอำนาจเซ็น</div><div class="who"></div></div>
     </div>
   `;
@@ -469,6 +473,7 @@ function renderPreview(){
     root.querySelector(".f_engine").textContent = val("cu_engine");
     root.querySelector(".f_chassis").textContent = val("cu_chassis");
     root.querySelector(".f_signcust").textContent = val("cu_name");
+    root.querySelector(".f_signstaff").textContent = val("r_staff");
 
     const tbody = root.querySelector(".f_items");
     tbody.innerHTML = "";
@@ -497,7 +502,7 @@ function renderPreview(){
   });
 }
 
-['c_name','c_tax','r_no','r_date','cu_name','cu_phone','cu_addr','cu_plate','cu_engine','cu_chassis','r_note','gs_url']
+['c_name','c_tax','r_no','r_date','r_staff','cu_name','cu_phone','cu_addr','cu_plate','cu_engine','cu_chassis','r_note','gs_url']
 .forEach(id=>{
   document.getElementById(id).addEventListener('input', ()=>{ renderPreview(); saveCompanyInfoDebounced(); });
 });
@@ -521,7 +526,7 @@ function loadCompanyInfo(){
       const info = JSON.parse(raw);
       document.getElementById("c_name").value = info.name ?? val("c_name");
       document.getElementById("c_tax").value = info.tax ?? val("c_tax");
-      document.getElementById("gs_url").value = info.gsUrl ?? val("gs_url");
+      document.getElementById("gs_url").value = info.gsUrl || val("gs_url");
       updateSheetStatusLabel();
     }
   }catch(e){ /* no saved info yet */ }
@@ -576,7 +581,7 @@ async function newReceipt(){
 
 function collectReceiptData(){
   return {
-    no: val("r_no"), branch: val("r_branch"), date: val("r_date"),
+    no: val("r_no"), branch: val("r_branch"), date: val("r_date"), staffName: val("r_staff"),
     cuName: val("cu_name"), cuPhone: val("cu_phone"), cuAddr: val("cu_addr"), cuPlate: val("cu_plate"),
     cuEngine: val("cu_engine"), cuChassis: val("cu_chassis"),
     note: val("r_note"), items: items,
@@ -600,6 +605,11 @@ async function saveAndPrint(){
 }
 
 /* ---------------- Google Sheets sync (this is now the shared source of truth) ---------------- */
+function toggleAdvancedSettings(){
+  const el = document.getElementById("advancedSettings");
+  el.style.display = (el.style.display === "none") ? "block" : "none";
+}
+
 function updateSheetStatusLabel(){
   const url = val("gs_url").trim();
   const el = document.getElementById("gs_status");
@@ -725,7 +735,7 @@ async function openHistory(){
     div.innerHTML = `
       <div>
         <span class="no">${data.no}</span>
-        <div class="meta">${(BRANCHES[data.branch]||{}).label||""} · ${data.cuName||"(ไม่มีชื่อลูกค้า)"} · ${fmtDateThai(data.date)}</div>
+        <div class="meta">${(BRANCHES[data.branch]||{}).label||""} · ${data.cuName||"(ไม่มีชื่อลูกค้า)"} · ${fmtDateThai(data.date)}${data.staffName ? " · พนักงาน: "+data.staffName : ""}</div>
         <div class="meta" style="margin-top:2px;">รายการ: ${itemSummary}</div>
       </div>
       <div class="meta">฿${fmtMoney(total)}</div>
@@ -741,6 +751,7 @@ function loadReceipt(data){
   updateBranchPreviewBox();
   document.getElementById("r_no").value = data.no||"";
   document.getElementById("r_date").value = data.date||"";
+  document.getElementById("r_staff").value = data.staffName||"";
   document.getElementById("cu_name").value = data.cuName||"";
   document.getElementById("cu_phone").value = data.cuPhone||"";
   document.getElementById("cu_addr").value = data.cuAddr||"";
