@@ -191,7 +191,7 @@
     </div>
     <div class="field" style="font-size:11.5px;color:#7a8a99;background:#f5f8fb;border:1px solid #e2e8ee;border-radius:6px;padding:6px 8px;" id="branch_addr_preview"></div>
     <div class="row2">
-      <div class="field"><label>เลขที่ใบรับเงิน</label><input id="r_no" style="color:#194e8c;font-weight:700;"></div>
+      <div class="field"><label>เลขที่ใบรับเงิน</label><input id="r_no" readonly style="color:#194e8c;font-weight:700;background:#f0f2f5;cursor:not-allowed;"></div>
       <div class="field"><label>วันที่</label><input id="r_date" type="date"></div>
     </div>
     <div class="field"><label>ผู้รับเงิน</label><input id="r_staff" placeholder="เช่น สมหญิง"></div>
@@ -342,7 +342,7 @@ function todayISO(){ return new Date().toISOString().slice(0,10); }
 function fmtDateThai(iso){
   if(!iso) return "";
   const [y,m,d]=iso.split("-");
-  return `${d}/${m}/${(parseInt(y)+543).toString().slice(2)}`;
+  return `${d}/${m}/${y}`; // ค.ศ. 4 หลัก ตามที่ต้องการ
 }
 function fmtMoney(n){ return (n||0).toLocaleString("th-TH",{minimumFractionDigits:2,maximumFractionDigits:2}); }
 
