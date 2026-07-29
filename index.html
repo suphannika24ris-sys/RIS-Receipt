@@ -178,8 +178,8 @@
   <!-- ===================== LEFT: FORM ===================== -->
   <div class="panel">
     <h2>ข้อมูลบริษัท <small>(บันทึกอัตโนมัติ)</small></h2>
-    <div class="field"><label>ชื่อบริษัท</label><input id="c_name" value="บริษัท ระยองอีซูซุเซลส์ จำกัด"></div>
-    <div class="field"><label>เลขประจำตัวผู้เสียภาษี</label><input id="c_tax" value="0215546000153"></div>
+    <div class="field"><label>ชื่อบริษัท</label><input id="c_name" value="บริษัท ระยองอีซูซุเซลส์ จำกัด" readonly style="background:#f0f2f5;color:#5a6b7a;cursor:not-allowed;"></div>
+    <div class="field"><label>เลขประจำตัวผู้เสียภาษี</label><input id="c_tax" value="0215546000153" readonly style="background:#f0f2f5;color:#5a6b7a;cursor:not-allowed;"></div>
 
     <h2 style="margin-top:18px;">ข้อมูลใบรับเงิน</h2>
     <div class="field">
@@ -194,7 +194,7 @@
       <div class="field"><label>เลขที่ใบรับเงิน</label><input id="r_no" style="color:#194e8c;font-weight:700;"></div>
       <div class="field"><label>วันที่</label><input id="r_date" type="date"></div>
     </div>
-    <div class="field"><label>ชื่อพนักงานที่คีย์ใบรับเงิน</label><input id="r_staff" placeholder="เช่น สมหญิง"></div>
+    <div class="field"><label>ผู้รับเงิน</label><input id="r_staff" placeholder="เช่น สมหญิง"></div>
 
     <h2 style="margin-top:18px;">ข้อมูลลูกค้า / รถ</h2>
     <div class="field"><label>ชื่อลูกค้า</label><input id="cu_name"></div>
@@ -440,7 +440,7 @@ function receiptBlockHTML(titleTh){
     </div>
 
     <div class="rc-sign">
-      <div><div class="box">ลูกค้า/ผู้จ่ายเงิน</div><div class="who f_signcust"></div></div>
+      <div><div class="box">ลูกค้า</div><div class="who f_signcust"></div></div>
       <div><div class="box">ผู้รับเงิน</div><div class="who f_signstaff"></div></div>
       <div><div class="box">ผู้มีอำนาจเซ็น</div><div class="who"></div></div>
     </div>
@@ -502,7 +502,7 @@ function renderPreview(){
   });
 }
 
-['c_name','c_tax','r_no','r_date','r_staff','cu_name','cu_phone','cu_addr','cu_plate','cu_engine','cu_chassis','r_note','gs_url']
+['r_no','r_date','r_staff','cu_name','cu_phone','cu_addr','cu_plate','cu_engine','cu_chassis','r_note','gs_url']
 .forEach(id=>{
   document.getElementById(id).addEventListener('input', ()=>{ renderPreview(); saveCompanyInfoDebounced(); });
 });
@@ -515,7 +515,8 @@ function saveCompanyInfoDebounced(){
 }
 function saveCompanyInfo(){
   try{
-    const info = { name: val("c_name"), tax: val("c_tax"), gsUrl: val("gs_url") };
+    // Only gs_url is user-configurable now; name/tax are locked in the HTML itself.
+    const info = { gsUrl: val("gs_url") };
     localStorage.setItem('company_info', JSON.stringify(info));
   }catch(e){ console.error("save company info failed", e); }
 }
@@ -524,8 +525,6 @@ function loadCompanyInfo(){
     const raw = localStorage.getItem('company_info');
     if(raw){
       const info = JSON.parse(raw);
-      document.getElementById("c_name").value = info.name ?? val("c_name");
-      document.getElementById("c_tax").value = info.tax ?? val("c_tax");
       document.getElementById("gs_url").value = info.gsUrl || val("gs_url");
       updateSheetStatusLabel();
     }
@@ -605,9 +604,21 @@ async function saveAndPrint(){
 }
 
 /* ---------------- Google Sheets sync (this is now the shared source of truth) ---------------- */
+const ADVANCED_SETTINGS_PIN = "0108";
 function toggleAdvancedSettings(){
   const el = document.getElementById("advancedSettings");
-  el.style.display = (el.style.display === "none") ? "block" : "none";
+  const isHidden = el.style.display === "none" || el.style.display === "";
+  if(isHidden){
+    const entered = prompt("กรุณาใส่รหัส 4 หลักเพื่อเข้าตั้งค่าขั้นสูง");
+    if(entered === null) return; // cancelled
+    if(entered.trim() !== ADVANCED_SETTINGS_PIN){
+      showToast("รหัสไม่ถูกต้อง");
+      return;
+    }
+    el.style.display = "block";
+  } else {
+    el.style.display = "none";
+  }
 }
 
 function updateSheetStatusLabel(){
