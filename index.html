@@ -191,8 +191,8 @@
     </div>
     <div class="field" style="font-size:11.5px;color:#7a8a99;background:#f5f8fb;border:1px solid #e2e8ee;border-radius:6px;padding:6px 8px;" id="branch_addr_preview"></div>
     <div class="row2">
-      <div class="field"><label>เลขที่ใบรับเงิน</label><input id="r_no" readonly style="color:#194e8c;font-weight:700;background:#f0f2f5;cursor:not-allowed;"></div>
-      <div class="field"><label>วันที่</label><input id="r_date" type="date"></div>
+      <div class="field"><label>เลขที่ใบรับเงิน</label><input id="r_no" readonly placeholder="ออกเลขให้ตอนกดบันทึก" style="color:#194e8c;font-weight:700;background:#f0f2f5;cursor:not-allowed;"></div>
+      <div class="field"><label>วันที่</label><input id="r_date" type="date" disabled style="background:#f0f2f5;color:#5a6b7a;cursor:not-allowed;"></div>
     </div>
     <div class="field"><label>ผู้รับเงิน</label><input id="r_staff" placeholder="เช่น สมหญิง"></div>
 
@@ -216,7 +216,7 @@
     <div class="actions">
       <button class="btn secondary" onclick="newReceipt()">ใบใหม่</button>
       <button class="btn ghost" onclick="openHistory()">ประวัติ</button>
-      <button class="btn" onclick="saveAndPrint()">บันทึก &amp; พิมพ์ / PDF</button>
+      <button class="btn" id="btnSave" onclick="saveAndPrint()">บันทึก &amp; พิมพ์ / PDF</button>
     </div>
 
     <button type="button" class="btn ghost" style="width:100%;margin-top:10px;" onclick="toggleAdvancedSettings()">⚙ ตั้งค่าขั้นสูง</button>
@@ -323,9 +323,10 @@ const BRANCHES = {
 function currentBranch(){
   return BRANCHES[document.getElementById("r_branch").value] || BRANCHES.rayong;
 }
-async function onBranchChange(){
+function onBranchChange(){
   updateBranchPreviewBox();
-  document.getElementById("r_no").value = await nextReceiptNo(val("r_branch"));
+  // เลขที่ผูกกับสาขา: ถ้าเปลี่ยนสาขา ให้ล้างเลขเดิม แล้วออกเลขใหม่ตามสาขาตอนกดบันทึก
+  document.getElementById("r_no").value = "";
   renderPreview();
 }
 function updateBranchPreviewBox(){
@@ -531,40 +532,36 @@ function loadCompanyInfo(){
   }catch(e){ /* no saved info yet */ }
 }
 
-/* ---------------- Receipt numbering: ask Google Sheets for the true next number; localStorage is just an offline fallback ---------------- */
-async function nextReceiptNo(branchKey){
+/* ---------------- Receipt numbering ----------------
+   เลขที่จะถูกออก "ตอนกดบันทึก & พิมพ์" เท่านั้น (ไม่ออกตอนเปิดหน้าเว็บ/รีเฟรช/สลับสาขา/กดใบใหม่)
+   ขอเลขจาก Google Sheets เท่านั้น ถ้าขอไม่ได้จะไม่พิมพ์ (ไม่มีเลขสำรองในเครื่อง เพื่อไม่ให้เลขซ้ำ) */
+async function requestReceiptNo(branchKey){
   const b = BRANCHES[branchKey] || BRANCHES.rayong;
   const now = new Date();
   const yyyy = now.getFullYear();
   const mm = String(now.getMonth()+1).padStart(2,'0');
   const url = val("gs_url").trim();
+  if(!url) return null;
 
-  if(url){
-    try{
-      const sep = url.includes('?') ? '&' : '?';
-      const res = await fetch(`${url}${sep}action=nextno&branch=${branchKey}&code=${b.code}&yyyymm=${yyyy}${mm}`);
-      if(res.ok){
-        const json = await res.json();
-        if(json && json.nextNo) return json.nextNo;
-      }
-    }catch(e){ console.error("nextno fetch failed, using offline fallback", e); }
-  }
-
-  // Offline fallback (no Google Sheets configured, or unreachable right now)
-  const counterKey = 'counter3_'+branchKey+'_'+yyyy+'_'+mm;
-  let n = 1;
+  const ctrl = new AbortController();
+  const timer = setTimeout(()=>ctrl.abort(), 25000);
   try{
-    const stored = localStorage.getItem(counterKey);
-    n = stored ? (parseInt(stored)+1) : 1;
-  }catch(e){ n = 1; }
-  try{ localStorage.setItem(counterKey, String(n)); }
-  catch(e){ console.error("offline counter save failed", e); }
-  return `${b.code}${yyyy}${mm}${String(n).padStart(2,'0')}`;
+    const sep = url.includes('?') ? '&' : '?';
+    const res = await fetch(`${url}${sep}action=nextno&branch=${branchKey}&code=${b.code}&yyyymm=${yyyy}${mm}`, {signal: ctrl.signal});
+    if(!res.ok) return null;
+    const json = await res.json();
+    return (json && json.nextNo) ? json.nextNo : null;
+  }catch(e){
+    console.error("request receipt number failed", e);
+    return null;
+  }finally{
+    clearTimeout(timer);
+  }
 }
 
 /* ---------------- New / Save / History ---------------- */
 async function newReceipt(){
-  document.getElementById("r_no").value = await nextReceiptNo(val("r_branch"));
+  document.getElementById("r_no").value = "";
   document.getElementById("r_date").value = todayISO();
   document.getElementById("cu_name").value = "";
   document.getElementById("cu_phone").value = "";
@@ -588,19 +585,43 @@ function collectReceiptData(){
   };
 }
 
+let isSaving = false;
 async function saveAndPrint(){
-  const no = val("r_no");
-  if(!no){ showToast("กรุณากดปุ่ม “ใบใหม่” เพื่อออกเลขที่ก่อน"); return; }
-  const data = collectReceiptData();
+  if(isSaving) return; // กันกดซ้ำระหว่างรอ (ป้องกันออกเลขเกิน)
+  isSaving = true;
+  const btn = document.getElementById("btnSave");
+  if(btn){ btn.disabled = true; }
+  try{
+    // 1) ถ้ายังไม่มีเลขที่ (ใบใหม่) ให้ขอเลขจาก Google Sheets ตอนนี้
+    if(!val("r_no")){
+      showToast("กำลังออกเลขที่ใบรับเงิน...");
+      const no = await requestReceiptNo(val("r_branch"));
+      if(!no){
+        alert("ออกเลขที่ใบรับเงินไม่สำเร็จ (ติดต่อ Google Sheets ไม่ได้)\nยังไม่ได้พิมพ์และยังไม่ได้ใช้เลขที่ใด\nกรุณาตรวจสอบอินเทอร์เน็ตแล้วกด “บันทึก & พิมพ์” อีกครั้ง");
+        return;
+      }
+      document.getElementById("r_no").value = no;
+      renderPreview();
+    }
 
-  // Local cache on this device/browser (works even if offline or Sheets not configured)
-  try{ localStorage.setItem('receipt2_'+no, JSON.stringify(data)); }
-  catch(e){ console.error("local cache save failed", e); }
+    const data = collectReceiptData();
 
-  const synced = await syncToSheet(data);
-  showToast(synced ? "บันทึกและซิงค์ขึ้น Google Sheets แล้ว" : "บันทึกในเครื่องนี้แล้ว (ซิงค์ขึ้น Sheet ไม่สำเร็จ)");
+    // 2) สำรองไว้ในเครื่องก่อน (กันข้อมูลหายถ้าขั้นต่อไปล้มเหลว)
+    try{ localStorage.setItem('receipt2_'+data.no, JSON.stringify(data)); }
+    catch(e){ console.error("local cache save failed", e); }
 
-  setTimeout(()=>window.print(), 200);
+    // 3) บันทึกขึ้น Google Sheets ต้องสำเร็จก่อนจึงพิมพ์
+    const synced = await syncToSheet(data);
+    if(!synced){
+      alert("บันทึกขึ้น Google Sheets ไม่สำเร็จ จึงยังไม่พิมพ์\nเลขที่ " + data.no + " ถูกเก็บไว้ในเครื่องนี้แล้ว\nกรุณากด “บันทึก & พิมพ์” อีกครั้ง (จะใช้เลขที่เดิม ไม่ออกเลขใหม่)");
+      return;
+    }
+    showToast("บันทึกขึ้น Google Sheets แล้ว");
+    setTimeout(()=>window.print(), 200);
+  } finally {
+    isSaving = false;
+    if(btn){ btn.disabled = false; }
+  }
 }
 
 /* ---------------- Google Sheets sync (this is now the shared source of truth) ---------------- */
@@ -632,11 +653,15 @@ async function syncToSheet(data){
   const url = val("gs_url").trim();
   if(!url) return false;
   try{
-    await fetch(url, {
+    const res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "text/plain;charset=utf-8" }, // avoids CORS preflight against Apps Script
       body: JSON.stringify(data)
     });
+    if(!res.ok) throw new Error("HTTP " + res.status);
+    let json = null;
+    try{ json = await res.json(); }catch(e){ /* ตอบกลับไม่ใช่ JSON: ถือว่าไม่ยืนยันว่าบันทึกสำเร็จ */ }
+    if(!json || json.status !== "ok") throw new Error("Sheet did not confirm save: " + JSON.stringify(json));
     document.getElementById("gs_status").textContent = "ซิงค์ล่าสุด: " + new Date().toLocaleTimeString("th-TH");
     return true;
   }catch(e){
@@ -781,7 +806,6 @@ function loadReceipt(data){
   initSheets();
   await loadCompanyInfo();
   updateBranchPreviewBox();
-  document.getElementById("r_no").value = await nextReceiptNo(val("r_branch"));
   document.getElementById("r_date").value = todayISO();
   addItem();
 })();
