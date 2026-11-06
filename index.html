@@ -177,6 +177,7 @@
 
   <!-- ===================== LEFT: FORM ===================== -->
   <div class="panel">
+    <div id="viewOnlyBanner" style="display:none;background:#fff4e5;border:1px solid #f0b86e;color:#8a5200;border-radius:8px;padding:8px 10px;font-size:12.5px;margin-bottom:10px;">🔒 กำลังดูใบเก่า — แก้ไขไม่ได้ พิมพ์ซ้ำได้อย่างเดียว<br>กด “ใบใหม่” เพื่อออกใบใหม่</div>
     <h2>ข้อมูลบริษัท <small>(บันทึกอัตโนมัติ)</small></h2>
     <div class="field"><label>ชื่อบริษัท</label><input id="c_name" value="บริษัท ระยองอีซูซุเซลส์ จำกัด" readonly style="background:#f0f2f5;color:#5a6b7a;cursor:not-allowed;"></div>
     <div class="field"><label>เลขประจำตัวผู้เสียภาษี</label><input id="c_tax" value="0215546000153" readonly style="background:#f0f2f5;color:#5a6b7a;cursor:not-allowed;"></div>
@@ -208,7 +209,7 @@
 
     <div class="items-head"><h3>รายการชำระเงิน</h3></div>
     <div id="items"></div>
-    <button class="btn add-row" onclick="addItem()">+ เพิ่มรายการ</button>
+    <button class="btn add-row" id="btnAddItem" onclick="addItem()">+ เพิ่มรายการ</button>
 
     <h2 style="margin-top:18px;">หมายเหตุ</h2>
     <div class="field"><textarea id="r_note" placeholder="ข้อความเพิ่มเติม (แสดงเป็นบรรทัดประ 3 บรรทัดในใบเสร็จ)"></textarea></div>
@@ -381,7 +382,24 @@ function renderItems(){
     `;
     wrap.appendChild(row);
   });
+  applyViewOnlyToItems();
   renderPreview();
+}
+
+/* ---------------- View-only mode: ใบเก่าที่เปิดจากประวัติ ดู/พิมพ์ซ้ำได้อย่างเดียว แก้ไขไม่ได้ ---------------- */
+let viewOnly = false;
+let savedStaff = "", savedBranch = "rayong";
+const LOCKABLE_FIELDS = ["r_branch","r_staff","cu_name","cu_phone","cu_addr","cu_plate","cu_engine","cu_chassis","r_note"];
+function applyViewOnlyToItems(){
+  document.querySelectorAll("#items input, #items select, #items button").forEach(el=>{ el.disabled = viewOnly; });
+}
+function setViewOnly(on){
+  viewOnly = on;
+  LOCKABLE_FIELDS.forEach(id=>{ document.getElementById(id).disabled = on; });
+  applyViewOnlyToItems();
+  document.getElementById("btnAddItem").style.display = on ? "none" : "";
+  document.getElementById("viewOnlyBanner").style.display = on ? "block" : "none";
+  document.getElementById("btnSave").textContent = on ? "พิมพ์ซ้ำ" : "บันทึก & พิมพ์ / PDF";
 }
 
 /* ---------------- Preview render ---------------- */
@@ -561,6 +579,12 @@ async function requestReceiptNo(branchKey){
 
 /* ---------------- New / Save / History ---------------- */
 async function newReceipt(){
+  if(viewOnly){
+    setViewOnly(false);
+    document.getElementById("r_branch").value = savedBranch;
+    document.getElementById("r_staff").value = savedStaff;
+    updateBranchPreviewBox();
+  }
   document.getElementById("r_no").value = "";
   document.getElementById("r_date").value = todayISO();
   document.getElementById("cu_name").value = "";
@@ -587,6 +611,13 @@ function collectReceiptData(){
 
 let isSaving = false;
 async function saveAndPrint(){
+  if(viewOnly){
+    // ใบเก่า: พิมพ์ซ้ำอย่างเดียว ไม่ออกเลขใหม่ ไม่บันทึกทับ
+    const onDoneView = ()=>{ window.removeEventListener("afterprint", onDoneView); newReceipt(); };
+    window.addEventListener("afterprint", onDoneView);
+    window.print();
+    return;
+  }
   if(isSaving) return; // กันกดซ้ำระหว่างรอ (ป้องกันออกเลขเกิน)
   isSaving = true;
   const btn = document.getElementById("btnSave");
@@ -617,6 +648,14 @@ async function saveAndPrint(){
       return;
     }
     showToast("บันทึกขึ้น Google Sheets แล้ว");
+    // หลังพิมพ์เสร็จ (หรือปิดหน้าต่างพิมพ์) ให้ล้างฟอร์มเป็นใบใหม่อัตโนมัติ
+    // พนักงานจะได้ไม่เผลอแก้ใบเดิม (เก็บชื่อผู้รับเงินและสาขาไว้ให้)
+    const onDone = ()=>{
+      window.removeEventListener("afterprint", onDone);
+      newReceipt();
+      showToast("บันทึกแล้ว — พร้อมออกใบถัดไป");
+    };
+    window.addEventListener("afterprint", onDone);
     setTimeout(()=>window.print(), 200);
   } finally {
     isSaving = false;
@@ -661,7 +700,8 @@ async function syncToSheet(data){
     if(!res.ok) throw new Error("HTTP " + res.status);
     let json = null;
     try{ json = await res.json(); }catch(e){ /* ตอบกลับไม่ใช่ JSON: ถือว่าไม่ยืนยันว่าบันทึกสำเร็จ */ }
-    if(!json || json.status !== "ok") throw new Error("Sheet did not confirm save: " + JSON.stringify(json));
+    // "exists" = เลขที่นี้ถูกบันทึกไปแล้วจากความพยายามก่อนหน้า (ชีทไม่ยอมให้เขียนทับ) ถือว่าสำเร็จ
+    if(!json || (json.status !== "ok" && json.status !== "exists")) throw new Error("Sheet did not confirm save: " + JSON.stringify(json));
     document.getElementById("gs_status").textContent = "ซิงค์ล่าสุด: " + new Date().toLocaleTimeString("th-TH");
     return true;
   }catch(e){
@@ -783,6 +823,7 @@ async function openHistory(){
 function closeHistory(){ document.getElementById("histModal").classList.remove("show"); }
 
 function loadReceipt(data){
+  if(!viewOnly){ savedBranch = val("r_branch"); savedStaff = val("r_staff"); }
   document.getElementById("r_branch").value = data.branch||"rayong";
   updateBranchPreviewBox();
   document.getElementById("r_no").value = data.no||"";
@@ -796,9 +837,10 @@ function loadReceipt(data){
   document.getElementById("cu_chassis").value = data.cuChassis||"";
   document.getElementById("r_note").value = data.note||"";
   items = (data.items||[]).map(it=>Object.assign({},it,{id: it.id || ("it"+(++itemSeq)+"_"+Date.now())}));
+  setViewOnly(true);
   renderItems();
   closeHistory();
-  showToast("โหลดใบรับเงิน "+data.no+" แล้ว");
+  showToast("เปิดใบรับเงิน "+data.no+" (ดู/พิมพ์ซ้ำได้อย่างเดียว)");
 }
 
 /* ---------------- Init ---------------- */
